@@ -23,6 +23,9 @@ tokens.json
 *.swp
 *.swo
 
+# Trae
+.trae/
+
 # OS
 .DS_Store
 Thumbs.db
