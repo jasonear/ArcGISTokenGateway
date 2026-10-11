@@ -1,13 +1,12 @@
-import os
-from dotenv import load_dotenv
+# 简化配置，使用默认值
+# 生产环境建议通过环境变量覆盖
 
-load_dotenv()
+import os
 
 ARCGIS_SERVER_URL = os.getenv("ARCGIS_SERVER_URL", "http://localhost:6080")
-
 JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", "default-secret-key-change-in-production")
-JWT_ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
-JWT_EXPIRE_MINUTES = int(os.getenv("JWT_EXPIRE_MINUTES", "120"))
+JWT_ALGORITHM = "HS256"
+JWT_EXPIRE_MINUTES = 120  # 默认 2 小时
 
-HOST = os.getenv("HOST", "0.0.0.0")
-PORT = int(os.getenv("PORT", "8000"))
+HOST = "0.0.0.0"
+PORT = 8000
