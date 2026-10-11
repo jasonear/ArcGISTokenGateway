@@ -1,0 +1,132 @@
+import argparse
+import sys
+import os
+
+# Add current directory to path for importing config
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+from datetime import datetime, timezone, timedelta
+from service.token_service import generate_token as generate_token_from_service
+from service.token_store import save_token_record, list_tokens, delete_token, get_token
+
+
+def print_list():
+    tokens = list_tokens()
+    if not tokens:
+        print("当前没有已生成的 Token 记录。")
+        return
+
+    print("=" * 80)
+    print("Token 列表:")
+    print("=" * 80)
+
+    for token in tokens:
+        created_at = token.get("created_at", "N/A")
+        expire_at = token.get("expire_at", "N/A")
+
+        try:
+            created_dt = datetime.fromisoformat(created_at)
+            created_str = created_dt.strftime("%Y-%m-%d %H:%M:%S")
+        except (ValueError, TypeError):
+            created_str = created_at
+
+        try:
+            expire_dt = datetime.fromisoformat(expire_at)
+            expire_str = expire_dt.strftime("%Y-%m-%d %H:%M:%S")
+        except (ValueError, TypeError):
+            expire_str = expire_at
+
+        services_str = ", ".join(token.get("services", []))
+        status = token.get("status", "unknown")
+
+        print(f"Token ID: {token.get('token_id', 'N/A')}")
+        print(f"合作伙伴: {token.get('partner', 'N/A')}")
+        print(f"授权服务: {services_str}")
+        print(f"创建时间: {created_str}")
+        print(f"过期时间: {expire_str}")
+        print(f"状态: {status}")
+        print()
+
+    print("=" * 80)
+    print(f"总计: {len(tokens)} 个 Token")
+
+
+def print_delete(token_id: str):
+    result = delete_token(token_id)
+    if result:
+        print(f"Token {token_id} 已删除（标记为 revoked）。")
+    else:
+        print(f"未找到 Token ID: {token_id}")
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="ArcGIS Token 管理工具 - 生成、查看、删除 Token",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+示例:
+  # 生成 Token
+  python generate_token.py --partner "PartnerA" --services "ArcGIS/rest/services/TestMap/MapServer"
+
+  # 查看 Token 列表
+  python generate_token.py --list
+
+  # 删除 Token
+  python generate_token.py --delete "550e8400-e29b-41d4-a716-446655440000"
+        """,
+    )
+
+    parser.add_argument("--partner", type=str, help="合作伙伴名称")
+    parser.add_argument("--services", type=str, nargs="+", help="授权服务列表")
+    parser.add_argument("--hours", type=float, default=2.0, help="Token 有效期（小时，默认 2）")
+    parser.add_argument("--list", action="store_true", help="查看所有 Token 记录")
+    parser.add_argument("--delete", type=str, metavar="TOKEN_ID", help="删除指定 Token（传入 Token ID）")
+
+    args = parser.parse_args()
+
+    if args.list:
+        print_list()
+        return
+
+    if args.delete:
+        print_delete(args.delete)
+        return
+
+    if not args.partner or not args.services:
+        parser.print_help()
+        print("\n错误: 生成 Token 需要提供 --partner 和 --services 参数。")
+        sys.exit(1)
+
+    expire_minutes = int(args.hours * 60)
+
+    token, token_id = generate_token_from_service(args.partner, args.services, expire_minutes)
+
+    now = datetime.now(timezone.utc)
+    expire_at = now + timedelta(minutes=expire_minutes)
+    expire_at_str = expire_at.isoformat()
+
+    save_token_record(token_id, args.partner, args.services, expire_at_str)
+
+    try:
+        expire_display = expire_at.strftime("%Y-%m-%d %H:%M:%S")
+    except Exception:
+        expire_display = expire_at_str
+
+    print("=" * 60)
+    print("Token 生成成功!")
+    print("=" * 60)
+    print(f"Token ID: {token_id}")
+    print(f"合作伙伴: {args.partner}")
+    print(f"授权服务:")
+    for service in args.services:
+        print(f"  - {service}")
+    print(f"过期时间: {expire_display} UTC")
+    print("=" * 60)
+    print("Token:")
+    print(token)
+    print("=" * 60)
+    print("\n请妥善保管此 Token，不要泄露给未授权方。")
+
+
+if __name__ == "__main__":
+    main()
