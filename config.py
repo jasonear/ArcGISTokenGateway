@@ -2,6 +2,9 @@
 # 生产环境建议通过环境变量覆盖
 
 import os
+from dotenv import load_dotenv
+
+load_dotenv()
 
 ARCGIS_SERVER_URL = os.getenv("ARCGIS_SERVER_URL", "http://localhost:6080")
 JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", "default-secret-key-change-in-production")

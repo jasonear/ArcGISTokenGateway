@@ -23,8 +23,14 @@ async def health_check():
     }
 
 
-@app.api_route("/ArcGIS/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"])
+@app.api_route("/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"])
 async def arcgis_proxy(request: Request, path: str):
+    # Catch-all 路由，仅处理以 /arcgis 开头的路径（大小写不敏感）
+    if not path.lower().startswith("arcgis"):
+        return JSONResponse(
+            status_code=404,
+            content={"detail": "Not Found"}
+        )
     return await forward_request(request)
 
 

@@ -7,7 +7,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from datetime import datetime, timezone, timedelta
 from service.token_service import generate_token as generate_token_from_service
-from service.token_store import save_token_record, list_tokens, delete_token, get_token
+from service.token_store import save_token_record, list_tokens, delete_token, get_token, add_service_to_token
 
 
 def print_list():
@@ -73,6 +73,9 @@ def main():
 
   # 删除 Token
   python generate_token.py --delete "550e8400-e29b-41d4-a716-446655440000"
+
+  # 为 Token 增加可访问的服务
+  python generate_token.py --add-service "550e8400-e29b-41d4-a716-446655440000" "ArcGIS/rest/services/NewMap/MapServer"
         """,
     )
 
@@ -81,6 +84,7 @@ def main():
     parser.add_argument("--hours", type=float, default=2.0, help="Token 有效期（小时，默认 2）")
     parser.add_argument("--list", action="store_true", help="查看所有 Token 记录")
     parser.add_argument("--delete", type=str, metavar="TOKEN_ID", help="删除指定 Token（传入 Token ID）")
+    parser.add_argument("--add-service", nargs=2, metavar=("TOKEN_ID", "SERVICE"), help="为指定 Token 增加可访问的服务")
 
     args = parser.parse_args()
 
@@ -90,6 +94,16 @@ def main():
 
     if args.delete:
         print_delete(args.delete)
+        return
+
+    if args.add_service:
+        token_id, service = args.add_service
+        result = add_service_to_token(token_id, service)
+        if result:
+            print(f"成功为 Token {token_id} 增加服务: {service}")
+            print(f"当前授权服务: {', '.join(result.get('services', []))}")
+        else:
+            print(f"未找到 Token ID: {token_id}")
         return
 
     if not args.partner or not args.services:

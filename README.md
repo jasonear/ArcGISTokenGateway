@@ -8,18 +8,23 @@
 外部合作伙伴请求 --> FastAPI 网关 --> ArcGIS Server
                         │
                         ├─ JWT Token 验证
-                        ├─ Token 授权服务列表校验
+                        ├─ 持久化存储中动态校验服务权限
+                        ├─ Token 撤销状态检查
                         └─ 请求转发 + 响应返回
 ```
 
 ## 功能特性
 
-- **JWT Token 认证**：使用 JWT Token 进行身份验证，Token 包含合作伙伴信息和授权服务列表
+- **JWT Token 认证**：使用 HS256 算法签名，Token 包含合作伙伴信息和授权服务列表
 - **UUID Token ID**：每个 Token 拥有唯一的 UUID 标识（jti），便于管理和追踪
 - **服务级别权限控制**：每个 Token 精确授权可访问的地图服务
-- **反向代理**：透明转发请求到 ArcGIS Server，无需修改客户端代码
-- **Token 管理**：命令行工具支持生成、查看、删除 Token
+- **动态权限管理**：权限从持久化存储（tokens.json）实时读取，支持不重新签发 Token 即可增删服务
+- **反向代理**：透明转发请求到 ArcGIS Server，支持 GET/POST/PUT/DELETE/PATCH/HEAD/OPTIONS 全部 HTTP 方法
+- **路径大小写不敏感**：`/arcgis/`、`/ArcGIS/`、`/ARCGIS/` 等写法均可正常访问
+- **响应头规范化**：自动过滤上游 `Content-Length`、`Content-Encoding` 等头，避免客户端解析异常
+- **Token 管理**：命令行工具支持生成、查看、删除 Token，以及为已有 Token 增加服务
 - **Token 撤销**：支持即时撤销 Token（标记为 revoked），无需等待过期
+- **双方式传 Token**：支持 Authorization Header（推荐）和 Query 参数两种方式
 - **灵活配置**：支持环境变量配置，易于部署
 - **示例脚本**：提供完整的使用示例和自动化测试脚本
 
@@ -28,8 +33,8 @@
 ### 1. 安装依赖
 
 ```bash
-python -m venv venv
-.\venv\Scripts\activate
+python -m venv .venv
+.\.venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
@@ -48,7 +53,10 @@ copy .env.example .env
 ARCGIS_SERVER_URL=http://localhost:6080
 
 # JWT 密钥（生产环境必须修改）
-JWT_SECRET_KEY=your-super-secret-key-change-this-in-production
+JWT_SECRET_KEY=your-super-secret-key-change-this-in-production-min-32-chars
+
+# JWT 签名算法
+JWT_ALGORITHM=HS256
 
 # Token 有效期（分钟）
 JWT_EXPIRE_MINUTES=120
@@ -57,6 +65,8 @@ JWT_EXPIRE_MINUTES=120
 HOST=0.0.0.0
 PORT=8000
 ```
+
+> **默认配置**：若不提供 `.env` 文件，系统将使用内置默认值。`config.py` 中的默认密钥为 `default-secret-key-change-in-production`，默认有效期 120 分钟。生产环境务必通过环境变量覆盖。
 
 ### 3. 启动服务
 
@@ -75,6 +85,9 @@ python generate_token.py --list
 
 # 删除 Token（即时撤销）
 python generate_token.py --delete "token-id"
+
+# 为已有 Token 增加服务（无需重新签发）
+python generate_token.py --add-service "token-id" "ArcGIS/rest/services/NewMap/MapServer"
 ```
 
 ## 使用示例
@@ -118,6 +131,7 @@ const data = await response.json();
 ### `examples/usage_example.py` - 完整功能演示
 
 包含 8 个使用场景演示：
+
 - 生成 JWT Token
 - 获取图层信息
 - 查询地图要素
@@ -136,6 +150,7 @@ python examples/usage_example.py
 ### `examples/quick_test.py` - 自动化测试脚本
 
 包含 7 个测试用例：
+
 - 健康检查
 - Token 生成
 - 无 Token 访问测试
@@ -173,6 +188,7 @@ python generate_token.py --list
 ```
 
 输出示例：
+
 ```
 Token 列表:
 ================================================================================
@@ -185,6 +201,14 @@ Token ID: 550e8400-e29b-41d4-a716-446655440000
 
 总计: 1 个 Token
 ```
+
+### 为 Token 增加服务
+
+```bash
+python generate_token.py --add-service "550e8400-e29b-41d4-a716-446655440000" "ArcGIS/rest/services/NewMap/MapServer"
+```
+
+增加服务后权限立即生效，无需重新签发 Token。
 
 ### 删除 Token
 
@@ -213,23 +237,28 @@ python generate_token.py --delete "550e8400-e29b-41d4-a716-446655440000"
 ## 项目结构
 
 ```
-arcgisToken/
+ArcGISTokenGateway/
 ├── main.py                 # FastAPI 应用入口
-├── config.py               # 配置管理
+├── config.py               # 配置管理（环境变量 + 默认值）
 ├── requirements.txt        # Python 依赖
 ├── generate_token.py       # Token 管理命令行工具
-├── tokens.json             # Token 记录存储（自动生成）
-├── .env.example            # 配置示例
+├── tokens.json             # Token 记录存储（自动生成，已加入 .gitignore）
+├── .env.example            # 环境变量配置示例
+├── .gitignore              # Git 忽略规则
 ├── examples/               # 示例脚本
-│   ├── usage_example.py    # 完整功能演示
-│   └── quick_test.py       # 自动化测试
+│   ├── usage_example.py    # 完整功能演示（8个场景）
+│   └── quick_test.py       # 自动化测试（7个用例）
 ├── service/
-│   ├── token_service.py    # JWT Token 生成与验证
-│   ├── token_store.py      # Token 记录存储管理
-│   └── proxy_service.py    # 反向代理服务
+│   ├── __init__.py
+│   ├── token_service.py    # JWT Token 生成、验证、权限校验
+│   ├── token_store.py      # Token 记录持久化管理（JSON 文件）
+│   └── proxy_service.py    # 反向代理（请求转发到 ArcGIS Server）
 └── middleware/
-    └── auth_middleware.py  # 认证中间件
+    ├── __init__.py
+    └── auth_middleware.py  # JWT 认证中间件
 ```
+
+> **注意**：`.env` 和 `tokens.json` 已被加入 `.gitignore`，不会被提交到版本库。
 
 ## API 接口
 
@@ -240,6 +269,7 @@ GET /health
 ```
 
 响应：
+
 ```json
 {
   "status": "ok",
@@ -250,19 +280,38 @@ GET /health
 ### 反向代理
 
 ```
-GET/POST /ArcGIS/{path}
+GET/POST/PUT/DELETE/PATCH/HEAD/OPTIONS /{ArcGIS 服务路径}
 ```
 
-所有 `/ArcGIS/` 开头的请求会被代理到 ArcGIS Server，需要经过 Token 验证。
+所有 `/arcgis/` 开头的请求会被代理到 ArcGIS Server（前缀大小写不敏感，`/ArcGIS/`、`/ARCGIS/` 等写法均可），需要经过 Token 验证。请求中的 `token` 参数和 `Authorization` 头不会转发到上游服务。
+
+### 免认证路径
+
+以下路径无需 Token 即可访问：
+
+- `/health` - 健康检查
+- `/docs` - Swagger API 文档
+- `/redoc` - ReDoc API 文档
+- `/openapi.json` - OpenAPI 规范文件
 
 ### 错误响应
 
-| 状态码 | 说明 |
-|--------|------|
-| 401 | Token 无效、过期或被撤销 |
-| 403 | Token 未授权访问该服务 |
-| 502 | 无法连接到 ArcGIS Server |
-| 504 | ArcGIS Server 请求超时 |
+| 状态码 | 说明                      |
+| --- | ----------------------- |
+| 401 | Token 无效、过期或被撤销         |
+| 403 | Token 未授权访问该服务          |
+| 500 | 代理内部错误                  |
+| 502 | 无法连接到 ArcGIS Server     |
+| 504 | ArcGIS Server 请求超时（60秒） |
+
+## 常见问题排查
+
+| 现象 | 原因 | 解决方法 |
+| --- | --- | --- |
+| `Invalid or expired token` | Token 已过期，或生成/验证使用的 JWT 密钥不一致 | 重新生成 Token；确认 `.env` 中 `JWT_SECRET_KEY` 未变更 |
+| `Service not authorized in token` | Token 未授权该服务 | 使用 `--add-service` 为 Token 授权；服务路径须与授权路径一致（大小写可不同） |
+| `Cannot connect to ArcGIS Server` | 网关无法连接 ArcGIS Server | 检查 `.env` 中 `ARCGIS_SERVER_URL` 是否正确、Server 是否可达 |
+| 响应内容截断或乱码 | 上游响应头（`Content-Encoding` 等）与代理后响应不匹配 | 已内置响应头过滤，如仍出现请检查是否还有其他中间代理层 |
 
 ## 安全建议
 

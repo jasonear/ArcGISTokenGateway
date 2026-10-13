@@ -56,3 +56,23 @@ def delete_token(token_id: str) -> bool:
             _save_tokens(data)
             return True
     return False
+
+
+def add_service_to_token(token_id: str, service: str) -> dict | None:
+    """为指定 Token 增加可访问的服务，返回更新后的记录"""
+    data = _load_tokens()
+    for token in data.get("tokens", []):
+        if token["token_id"] == token_id:
+            if service not in token.get("services", []):
+                token.setdefault("services", []).append(service)
+            _save_tokens(data)
+            return token
+    return None
+
+
+def get_token_services(token_id: str) -> list[str]:
+    """从持久化存储中获取 Token 授权的服务列表"""
+    token = get_token(token_id)
+    if not token:
+        return []
+    return token.get("services", [])

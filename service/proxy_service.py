@@ -4,6 +4,9 @@ from starlette.responses import Response
 
 from config import ARCGIS_SERVER_URL
 
+# 需要过滤的响应头：httpx 已自动解压响应体，需移除长度/压缩/连接相关头
+EXCLUDE_HEADERS = {"content-length", "transfer-encoding", "connection", "keep-alive", "content-encoding"}
+
 
 async def forward_request(request: Request) -> Response:
     # Build target URL
@@ -33,11 +36,16 @@ async def forward_request(request: Request) -> Response:
                 content=body if body else None,
             )
 
-            # Build response
+            # 过滤上游响应头，避免长度/编码不匹配
+            response_headers = {
+                k: v for k, v in response.headers.items()
+                if k.lower() not in EXCLUDE_HEADERS
+            }
+
             return Response(
                 content=response.content,
                 status_code=response.status_code,
-                headers=dict(response.headers),
+                headers=response_headers,
             )
         except httpx.ConnectError:
             return Response(
