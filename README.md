@@ -32,6 +32,8 @@
 
 ### 1. 安装依赖
 
+要求 Python 3.10 及以上（代码使用了 `str | None` 类型标注语法）。
+
 ```bash
 python -m venv .venv
 .\.venv\Scripts\activate
@@ -333,6 +335,78 @@ python -c "import secrets; print(secrets.token_urlsafe(48))"
 ```
 
 ## 生产部署
+
+### 使用 NSSM（Windows Server 2019）
+
+**环境要求**：Python 3.10 及以上（代码使用了 `str | None` 类型标注语法）、防火墙放行网关端口（默认 8000）。
+
+**1. 安装 Python**
+
+官网下载 Python 3.12 安装包（服务器不可联网时在开发机下载后拷贝），安装时勾选 **Add python.exe to PATH**。
+
+**2. 部署代码与依赖**
+
+```powershell
+# 拷贝项目到服务器，如 D:\apps\ArcGISTokenGateway（不要拷贝开发机的 .venv）
+cd D:\apps\ArcGISTokenGateway
+python -m venv .venv
+.\.venv\Scripts\activate
+pip install -r requirements.txt
+
+# 服务器不可联网时：先在开发机执行 pip download -r requirements.txt -d wheels，
+# 将 wheels 目录随代码拷贝到服务器后离线安装：
+pip install --no-index --find-links=wheels -r requirements.txt
+```
+
+**3. 配置与防火墙**
+
+```powershell
+# 创建 .env（参考 .env.example），生产密钥使用新的强随机值：
+.venv\Scripts\python.exe -c "import secrets; print(secrets.token_urlsafe(48))"
+
+# 管理员 PowerShell 放行端口
+netsh advfirewall firewall add rule name="ArcGIS Token Gateway" dir=in action=allow protocol=TCP localport=8000
+```
+
+**4. 注册为 Windows 服务（NSSM）**
+
+下载 [NSSM](https://nssm.cc/download)，将 `nssm.exe` 放至如 `D:\apps\nssm\`，管理员 PowerShell 执行：
+
+```powershell
+$nssm = "D:\apps\nssm\nssm.exe"
+$app  = "D:\apps\ArcGISTokenGateway"
+
+# 注册服务（AppDirectory 必须设置，否则找不到 main.py）
+& $nssm install ArcGISTokenGateway "$app\.venv\Scripts\python.exe" "-m uvicorn main:app --host 0.0.0.0 --port 8000"
+& $nssm set ArcGISTokenGateway AppDirectory $app
+
+# 日志输出与轮转
+& $nssm set ArcGISTokenGateway AppStdout "$app\logs\out.log"
+& $nssm set ArcGISTokenGateway AppStderr "$app\logs\err.log"
+& $nssm set ArcGISTokenGateway AppRotateFiles 1
+
+# 崩溃自动重启，并启动服务
+& $nssm set ArcGISTokenGateway AppExit Default Restart
+& $nssm start ArcGISTokenGateway
+```
+
+管理命令：`nssm status|stop|restart|remove confirm ArcGISTokenGateway`。
+
+**5. 日常运维**
+
+```powershell
+# tokens.json 每日备份（注册计划任务）
+schtasks /create /tn "BackupTokens" /sc daily /st 23:30 /tr "powershell -Command Copy-Item 'D:\apps\ArcGISTokenGateway\tokens.json' ('D:\backup\tokens.' + (Get-Date -Format yyyyMMdd) + '.json')"
+
+# 代码更新：停服务 → 替换代码（保留 .env、tokens.json、.venv）→ 启服务
+D:\apps\nssm\nssm.exe stop ArcGISTokenGateway
+D:\apps\nssm\nssm.exe start ArcGISTokenGateway
+```
+
+> **注意**：
+> 1. **单实例运行**，不要加 `--workers`：`tokens.json` 为文件存储且无并发锁，多进程存在写入竞态风险
+> 2. 网关本身为 HTTP，如需 HTTPS 建议前置 Nginx for Windows 或 IIS ARR 做 TLS 终结
+> 3. 部署后使用新密钥重新为合作伙伴签发 Token，开发环境的 Token 不适用于生产
 
 ### 使用 systemd（Linux）
 
