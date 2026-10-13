@@ -311,6 +311,7 @@ GET/POST/PUT/DELETE/PATCH/HEAD/OPTIONS /{ArcGIS 服务路径}
 | `Invalid or expired token` | Token 已过期，或生成/验证使用的 JWT 密钥不一致 | 重新生成 Token；确认 `.env` 中 `JWT_SECRET_KEY` 未变更 |
 | `Service not authorized in token` | Token 未授权该服务 | 使用 `--add-service` 为 Token 授权；服务路径须与授权路径一致（大小写可不同） |
 | `Cannot connect to ArcGIS Server` | 网关无法连接 ArcGIS Server | 检查 `.env` 中 `ARCGIS_SERVER_URL` 是否正确、Server 是否可达 |
+| 多个合法 Token 同时返回 403 | `tokens.json` 丢失、损坏或记录缺失（fail-closed 策略，拒绝优于放行） | 从备份恢复 `tokens.json`；无法恢复时重新签发 Token |
 | 响应内容截断或乱码 | 上游响应头（`Content-Encoding` 等）与代理后响应不匹配 | 已内置响应头过滤，如仍出现请检查是否还有其他中间代理层 |
 
 ## 安全建议
