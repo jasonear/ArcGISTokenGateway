@@ -6,18 +6,35 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from datetime import datetime, timezone, timedelta
+from config import JWT_EXPIRE_MINUTES
 from service.token_service import generate_token as generate_token_from_service
 from service.token_store import save_token_record, list_tokens, delete_token, get_token, add_service_to_token
 
 
-def print_list():
+def print_list(only_active: bool = False):
+    """打印 Token 列表；only_active 为 True 时仅显示有效（未撤销且未过期）的 Token"""
     tokens = list_tokens()
+    if only_active:
+        now = datetime.now(timezone.utc)
+        filtered = []
+        for token in tokens:
+            if token.get("status") != "active":
+                continue
+            try:
+                # 有效期未知按无效处理（fail-closed）
+                if datetime.fromisoformat(token.get("expire_at", "")) <= now:
+                    continue
+            except (ValueError, TypeError):
+                continue
+            filtered.append(token)
+        tokens = filtered
+
     if not tokens:
-        print("当前没有已生成的 Token 记录。")
+        print("没有符合条件的 Token 记录。" if only_active else "当前没有已生成的 Token 记录。")
         return
 
     print("=" * 80)
-    print("Token 列表:")
+    print("有效 Token 列表:" if only_active else "Token 列表:")
     print("=" * 80)
 
     for token in tokens:
@@ -68,8 +85,11 @@ def main():
   # 生成 Token
   python generate_token.py --partner "PartnerA" --services "ArcGIS/rest/services/TestMap/MapServer"
 
-  # 查看 Token 列表
+  # 查看有效 Token 列表
   python generate_token.py --list
+
+  # 查看全部 Token 记录（含已撤销、已过期）
+  python generate_token.py --listall
 
   # 删除 Token
   python generate_token.py --delete "550e8400-e29b-41d4-a716-446655440000"
@@ -81,14 +101,19 @@ def main():
 
     parser.add_argument("--partner", type=str, help="合作伙伴名称")
     parser.add_argument("--services", type=str, nargs="+", help="授权服务列表")
-    parser.add_argument("--hours", type=float, default=2.0, help="Token 有效期（小时，默认 2）")
-    parser.add_argument("--list", action="store_true", help="查看所有 Token 记录")
+    parser.add_argument("--hours", type=float, default=JWT_EXPIRE_MINUTES / 60, help="Token 有效期（小时，默认取 .env 中 JWT_EXPIRE_HOURS）")
+    parser.add_argument("--list", action="store_true", help="查看有效 Token 列表（未撤销且未过期）")
+    parser.add_argument("--listall", action="store_true", help="查看全部 Token 记录（含已撤销、已过期）")
     parser.add_argument("--delete", type=str, metavar="TOKEN_ID", help="删除指定 Token（传入 Token ID）")
     parser.add_argument("--add-service", nargs=2, metavar=("TOKEN_ID", "SERVICE"), help="为指定 Token 增加可访问的服务")
 
     args = parser.parse_args()
 
     if args.list:
+        print_list(only_active=True)
+        return
+
+    if args.listall:
         print_list()
         return
 

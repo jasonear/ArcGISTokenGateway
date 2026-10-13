@@ -60,15 +60,15 @@ JWT_SECRET_KEY=your-super-secret-key-change-this-in-production-min-32-chars
 # JWT 签名算法
 JWT_ALGORITHM=HS256
 
-# Token 有效期（分钟）
-JWT_EXPIRE_MINUTES=120
+# Token 有效期（小时，8760 = 1 年）
+JWT_EXPIRE_HOURS=8760
 
 # 服务端口
 HOST=0.0.0.0
 PORT=8000
 ```
 
-> **默认配置**：若不提供 `.env` 文件，系统将使用内置默认值。`config.py` 中的默认密钥为 `default-secret-key-change-in-production`，默认有效期 120 分钟。生产环境务必通过环境变量覆盖。
+> **默认配置**：若不提供 `.env` 文件，系统将使用内置默认值。`config.py` 中的默认密钥为 `default-secret-key-change-in-production`，默认有效期 2 小时（`JWT_EXPIRE_HOURS=2`）。生产环境务必通过环境变量覆盖。
 
 ### 3. 启动服务
 
@@ -169,6 +169,24 @@ python examples/quick_test.py
 
 ## 命令行工具
 
+### 命令汇总
+
+| 命令 | 说明 |
+| --- | --- |
+| `python generate_token.py --partner <名称> --services <服务...>` | 生成 Token |
+| `python generate_token.py --list` | 查看有效 Token 列表（未撤销且未过期） |
+| `python generate_token.py --listall` | 查看全部 Token 记录（含已撤销、已过期） |
+| `python generate_token.py --delete <TOKEN_ID>` | 删除（撤销）指定 Token |
+| `python generate_token.py --add-service <TOKEN_ID> <服务>` | 为指定 Token 增加可访问的服务 |
+
+**生成 Token 的参数说明：**
+
+| 参数 | 必填 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `--partner` | 是 | 无 | 合作伙伴名称 |
+| `--services` | 是 | 无 | 授权服务列表，空格分隔多个 |
+| `--hours` | 否 | 取 `.env` 中 `JWT_EXPIRE_HOURS` | Token 有效期（小时） |
+
 ### 生成 Token
 
 ```bash
@@ -186,10 +204,14 @@ python generate_token.py --partner "PartnerC" --services "ArcGIS/rest/services/T
 ### 查看 Token 列表
 
 ```bash
+# 查看有效 Token（未撤销且未过期）
 python generate_token.py --list
+
+# 查看全部 Token 记录（含已撤销、已过期）
+python generate_token.py --listall
 ```
 
-输出示例：
+`--listall` 输出示例：
 
 ```
 Token 列表:
