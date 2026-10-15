@@ -319,9 +319,6 @@ GET/POST/PUT/DELETE/PATCH/HEAD/OPTIONS /{ArcGIS 服务路径}
 以下路径无需 Token 即可访问：
 
 - `/health` - 健康检查
-- `/docs` - Swagger API 文档
-- `/redoc` - ReDoc API 文档
-- `/openapi.json` - OpenAPI 规范文件
 
 ### 错误响应
 

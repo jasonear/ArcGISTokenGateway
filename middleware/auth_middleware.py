@@ -10,10 +10,6 @@ logger = get_logger("auth")
 
 BYPASS_PATHS = [
     "/health",
-    "/docs",
-    "/redoc",
-    "/openapi.json",
-    "/generate_token",
 ]
 
 

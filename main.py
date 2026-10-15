@@ -24,6 +24,9 @@ app = FastAPI(
     description="JWT Token authentication gateway for ArcGIS map services",
     version="1.0.0",
     lifespan=lifespan,
+    docs_url=None,      # 禁用 /docs
+    redoc_url=None,     # 禁用 /redoc
+    openapi_url=None,   # 禁用 /openapi.json
 )
 
 app.add_middleware(AuthMiddleware)
