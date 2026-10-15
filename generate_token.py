@@ -9,6 +9,9 @@ from datetime import datetime, timezone, timedelta
 from config import JWT_EXPIRE_MINUTES
 from service.token_service import generate_token as generate_token_from_service
 from service.token_store import save_token_record, list_tokens, delete_token, get_token, add_service_to_token
+from logger import get_logger
+
+logger = get_logger("token_cli")
 
 
 def print_list(only_active: bool = False):
@@ -71,8 +74,10 @@ def print_list(only_active: bool = False):
 def print_delete(token_id: str):
     result = delete_token(token_id)
     if result:
+        logger.info("Token 已撤销 | Token ID: %s", token_id)
         print(f"Token {token_id} 已删除（标记为 revoked）。")
     else:
+        logger.warning("撤销 Token 失败: 未找到 Token ID: %s", token_id)
         print(f"未找到 Token ID: {token_id}")
 
 
@@ -125,9 +130,11 @@ def main():
         token_id, service = args.add_service
         result = add_service_to_token(token_id, service)
         if result:
+            logger.info("为 Token 增加服务 | Token ID: %s | 服务: %s", token_id, service)
             print(f"成功为 Token {token_id} 增加服务: {service}")
             print(f"当前授权服务: {', '.join(result.get('services', []))}")
         else:
+            logger.warning("增加服务失败: 未找到 Token ID: %s", token_id)
             print(f"未找到 Token ID: {token_id}")
         return
 
@@ -145,6 +152,11 @@ def main():
     expire_at_str = expire_at.isoformat()
 
     save_token_record(token_id, args.partner, args.services, expire_at_str)
+
+    logger.info(
+        "生成 Token | Token ID: %s | 合作方: %s | 服务: %s | 有效期(分钟): %s",
+        token_id, args.partner, ", ".join(args.services), expire_minutes,
+    )
 
     try:
         expire_display = expire_at.strftime("%Y-%m-%d %H:%M:%S")

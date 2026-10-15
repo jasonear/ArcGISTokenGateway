@@ -25,6 +25,7 @@
 - **Token 管理**：命令行工具支持生成、查看、删除 Token，以及为已有 Token 增加服务
 - **Token 撤销**：支持即时撤销 Token（标记为 revoked），无需等待过期
 - **双方式传 Token**：支持 Authorization Header（推荐）和 Query 参数两种方式
+- **运行日志**：日志文件输出到 `log/` 文件夹，按天轮转（零点切割），保留 90 天，覆盖认证、授权、代理转发、Token 管理全流程
 - **灵活配置**：支持环境变量配置，易于部署
 - **示例脚本**：提供完整的使用示例和自动化测试脚本
 
@@ -73,8 +74,10 @@ PORT=8000
 ### 3. 启动服务
 
 ```bash
-uvicorn main:app --reload --port 8000
+python main.py
 ```
+
+> **注意**：请使用 `python main.py` 启动，而不要使用 `uvicorn main:app` 命令行方式。只有前者才会将自定义日志配置传入 uvicorn，使服务生命周期与 HTTP 访问日志写入 `log/` 文件夹（详见 [日志](#日志) 章节）。
 
 ### 4. 生成 Token
 
@@ -171,21 +174,21 @@ python examples/quick_test.py
 
 ### 命令汇总
 
-| 命令 | 说明 |
-| --- | --- |
-| `python generate_token.py --partner <名称> --services <服务...>` | 生成 Token |
-| `python generate_token.py --list` | 查看有效 Token 列表（未撤销且未过期） |
-| `python generate_token.py --listall` | 查看全部 Token 记录（含已撤销、已过期） |
-| `python generate_token.py --delete <TOKEN_ID>` | 删除（撤销）指定 Token |
-| `python generate_token.py --add-service <TOKEN_ID> <服务>` | 为指定 Token 增加可访问的服务 |
+| 命令                                                           | 说明                      |
+| ------------------------------------------------------------ | ----------------------- |
+| `python generate_token.py --partner <名称> --services <服务...>` | 生成 Token                |
+| `python generate_token.py --list`                            | 查看有效 Token 列表（未撤销且未过期）  |
+| `python generate_token.py --listall`                         | 查看全部 Token 记录（含已撤销、已过期） |
+| `python generate_token.py --delete <TOKEN_ID>`               | 删除（撤销）指定 Token          |
+| `python generate_token.py --add-service <TOKEN_ID> <服务>`     | 为指定 Token 增加可访问的服务      |
 
 **生成 Token 的参数说明：**
 
-| 参数 | 必填 | 默认值 | 说明 |
-| --- | --- | --- | --- |
-| `--partner` | 是 | 无 | 合作伙伴名称 |
-| `--services` | 是 | 无 | 授权服务列表，空格分隔多个 |
-| `--hours` | 否 | 取 `.env` 中 `JWT_EXPIRE_HOURS` | Token 有效期（小时） |
+| 参数           | 必填 | 默认值                           | 说明            |
+| ------------ | -- | ----------------------------- | ------------- |
+| `--partner`  | 是  | 无                             | 合作伙伴名称        |
+| `--services` | 是  | 无                             | 授权服务列表，空格分隔多个 |
+| `--hours`    | 否  | 取 `.env` 中 `JWT_EXPIRE_HOURS` | Token 有效期（小时） |
 
 ### 生成 Token
 
@@ -264,9 +267,11 @@ python generate_token.py --delete "550e8400-e29b-41d4-a716-446655440000"
 ArcGISTokenGateway/
 ├── main.py                 # FastAPI 应用入口
 ├── config.py               # 配置管理（环境变量 + 默认值）
+├── logger.py               # 日志配置（log/ 文件夹输出、按天轮转、保留 90 天）
 ├── requirements.txt        # Python 依赖
 ├── generate_token.py       # Token 管理命令行工具
 ├── tokens.json             # Token 记录存储（自动生成，已加入 .gitignore）
+├── log/                    # 运行日志输出目录（自动生成，已加入 .gitignore）
 ├── .env.example            # 环境变量配置示例
 ├── .gitignore              # Git 忽略规则
 ├── examples/               # 示例脚本
@@ -282,7 +287,7 @@ ArcGISTokenGateway/
     └── auth_middleware.py  # JWT 认证中间件
 ```
 
-> **注意**：`.env` 和 `tokens.json` 已被加入 `.gitignore`，不会被提交到版本库。
+> **注意**：`.env`、`tokens.json` 和 `log/` 已被加入 `.gitignore`，不会被提交到版本库。
 
 ## API 接口
 
@@ -328,15 +333,55 @@ GET/POST/PUT/DELETE/PATCH/HEAD/OPTIONS /{ArcGIS 服务路径}
 | 502 | 无法连接到 ArcGIS Server     |
 | 504 | ArcGIS Server 请求超时（60秒） |
 
+## 日志
+
+网关运行日志统一写入项目根目录下的 `log/` 文件夹（已加入 `.gitignore`），同时输出到控制台。
+
+### 日志文件
+
+| 文件                   | 记录者     | 内容                                                        |
+| -------------------- | ------- | --------------------------------------------------------- |
+| `app.log`            | 业务代码    | 认证/授权结果、代理请求（方法、路径、状态码、耗时）、上游异常、Token 生成/撤销/授权变更、未知路径 404 |
+| `uvicorn.log`        | uvicorn | 服务生命周期（启动、停止、重载、错误）                                       |
+| `uvicorn_access.log` | uvicorn | 每条 HTTP 请求的访问日志（来源 IP、路径、状态码）                             |
+
+### 轮转策略
+
+- 每天零点切割为新文件（文件名带日期后缀，如 `app.log.2026-10-15`）
+- 保留 90 天，过期日志自动删除
+- 统一 UTF-8 编码，避免 Windows 下中文乱码
+
+相关常量定义在 [logger.py](logger.py) 中（`LOG_BACKUP_DAYS` 保留天数、`LOG_FORMAT` 日志格式、`LOG_LEVEL` 日志级别），可按需调整。
+
+### 日志样例
+
+```
+2026-10-15 08:20:00,755 | INFO    | main | ArcGIS Token Gateway 启动完成，监听 0.0.0.0:8000
+2026-10-15 08:20:15,084 | WARNING | auth | 认证失败: 缺少 Token | 路径: /arcgis/rest/services/TestMap/MapServer | 来源: 127.0.0.1
+2026-10-15 08:20:25,046 | INFO    | auth | 认证通过 | 合作方: E2ETest | Token ID: acf4818b-... | GET /arcgis/rest/services/TestMap/MapServer | 来源: 127.0.0.1
+2026-10-15 08:20:25,370 | INFO    | proxy | 代理请求 GET /arcgis/rest/services/TestMap/MapServer -> http://192.168.0.229:6080/... | 状态码: 200 | 耗时: 328ms
+2026-10-15 08:20:25,384 | WARNING | auth | 授权失败: 服务未在 Token 授权范围 | Token ID: acf4818b-... | 请求服务: arcgis/rest/services/othermap/mapserver | 路径: /arcgis/... | 来源: 127.0.0.1
+```
+
+### 重要：启动方式影响 uvicorn 日志落盘
+
+uvicorn 启动时会用自身默认日志配置**整体替换**已注册的处理器。因此：
+
+- **`python main.py`**（推荐）：`main.py` 中的 `__main__` 块将自定义配置通过 `uvicorn.run(log_config=...)` 传入，三个日志文件均正常写入
+- **`uvicorn main:app`**：自定义配置没有机会传入，`app.log` 正常写入，但 `uvicorn.log`、`uvicorn_access.log` 不会落盘
+
+若部署环境必须用 `uvicorn` 命令行启动，可用 `make_uvicorn_log_config()` 导出 JSON 配置文件后通过 `--log-config` 参数传入。
+
 ## 常见问题排查
 
-| 现象 | 原因 | 解决方法 |
-| --- | --- | --- |
-| `Invalid or expired token` | Token 已过期，或生成/验证使用的 JWT 密钥不一致 | 重新生成 Token；确认 `.env` 中 `JWT_SECRET_KEY` 未变更 |
-| `Service not authorized in token` | Token 未授权该服务 | 使用 `--add-service` 为 Token 授权；服务路径须与授权路径一致（大小写可不同） |
-| `Cannot connect to ArcGIS Server` | 网关无法连接 ArcGIS Server | 检查 `.env` 中 `ARCGIS_SERVER_URL` 是否正确、Server 是否可达 |
-| 多个合法 Token 同时返回 403 | `tokens.json` 丢失、损坏或记录缺失（fail-closed 策略，拒绝优于放行） | 从备份恢复 `tokens.json`；无法恢复时重新签发 Token |
-| 响应内容截断或乱码 | 上游响应头（`Content-Encoding` 等）与代理后响应不匹配 | 已内置响应头过滤，如仍出现请检查是否还有其他中间代理层 |
+| 现象                                                 | 原因                                              | 解决方法                                               |
+| -------------------------------------------------- | ----------------------------------------------- | -------------------------------------------------- |
+| `Invalid or expired token`                         | Token 已过期，或生成/验证使用的 JWT 密钥不一致                   | 重新生成 Token；确认 `.env` 中 `JWT_SECRET_KEY` 未变更        |
+| `Service not authorized in token`                  | Token 未授权该服务                                    | 使用 `--add-service` 为 Token 授权；服务路径须与授权路径一致（大小写可不同） |
+| `Cannot connect to ArcGIS Server`                  | 网关无法连接 ArcGIS Server                            | 检查 `.env` 中 `ARCGIS_SERVER_URL` 是否正确、Server 是否可达   |
+| 多个合法 Token 同时返回 403                                | `tokens.json` 丢失、损坏或记录缺失（fail-closed 策略，拒绝优于放行） | 从备份恢复 `tokens.json`；无法恢复时重新签发 Token                |
+| 响应内容截断或乱码                                          | 上游响应头（`Content-Encoding` 等）与代理后响应不匹配            | 已内置响应头过滤，如仍出现请检查是否还有其他中间代理层                        |
+| `log/` 下无 `uvicorn.log`、`uvicorn_access.log` 或内容为空 | 使用 `uvicorn main:app` 命令行方式启动，自定义日志配置未传入        | 改用 `python main.py` 启动（详见 [日志](#日志) 章节）            |
 
 ## 安全建议
 
@@ -399,10 +444,13 @@ $nssm = "D:\apps\nssm\nssm.exe"
 $app  = "D:\apps\ArcGISTokenGateway"
 
 # 注册服务（AppDirectory 必须设置，否则找不到 main.py）
-& $nssm install ArcGISTokenGateway "$app\.venv\Scripts\python.exe" "-m uvicorn main:app --host 0.0.0.0 --port 8000"
+# 注意：必须用 python main.py 启动，uvicorn 日志才会写入 log/ 文件夹
+& $nssm install ArcGISTokenGateway "$app\.venv\Scripts\python.exe" "main.py"
 & $nssm set ArcGISTokenGateway AppDirectory $app
+# 关闭开发用热重载
+& $nssm set ArcGISTokenGateway AppEnvironmentExtra RELOAD=false
 
-# 日志输出与轮转
+# 控制台输出兜底日志（应用日志已由网关自身写入 log\ 文件夹）
 & $nssm set ArcGISTokenGateway AppStdout "$app\logs\out.log"
 & $nssm set ArcGISTokenGateway AppStderr "$app\logs\err.log"
 & $nssm set ArcGISTokenGateway AppRotateFiles 1
@@ -426,6 +474,7 @@ D:\apps\nssm\nssm.exe start ArcGISTokenGateway
 ```
 
 > **注意**：
+>
 > 1. **单实例运行**，不要加 `--workers`：`tokens.json` 为文件存储且无并发锁，多进程存在写入竞态风险
 > 2. 网关本身为 HTTP，如需 HTTPS 建议前置 Nginx for Windows 或 IIS ARR 做 TLS 终结
 > 3. 部署后使用新密钥重新为合作伙伴签发 Token，开发环境的 Token 不适用于生产
@@ -443,8 +492,10 @@ Type=simple
 User=www-data
 WorkingDirectory=/opt/arcgis-gateway
 Environment=PYTHONUNBUFFERED=1
+# 必须用 python main.py 启动，uvicorn 日志才会写入 log/ 文件夹；RELOAD=false 关闭开发用热重载
+Environment=RELOAD=false
 EnvironmentFile=/opt/arcgis-gateway/.env
-ExecStart=/opt/arcgis-gateway/venv/bin/uvicorn main:app --host 0.0.0.0 --port 8000 --workers 4
+ExecStart=/opt/arcgis-gateway/venv/bin/python main.py
 Restart=always
 
 [Install]
